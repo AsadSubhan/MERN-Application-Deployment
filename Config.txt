@@ -1,0 +1,86 @@
+NGINX CONFIG FILE
+============================
+
+server {
+    listen 443 ssl;
+    server_name YOUR_PUBLIC_IP;  # Replace with your public IP address
+
+    ssl_certificate /etc/nginx/ssl/self-signed.crt;
+    ssl_certificate_key /etc/nginx/ssl/self-signed.key;
+
+    location / {
+        proxy_pass http://localhost:3000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+    }
+
+    # Additional SSL settings and Nginx configuration can be added here.
+}
+
+
+PROMETHEUS SYSTEMD FILE
+===========================
+
+[Unit]
+Description=Prometheus
+Wants=network-online.target
+After=network-online.target
+[Service]
+ExecStart=/etc/prometheus/prometheus --config.file=/etc/prometheus/prometheus.yml
+Restart=always
+[Install]
+WantedBy=multi-user.target
+
+
+NODE EXPORTER SYSTEMD FILE
+============================
+
+[Unit]
+Description=Node Exporter
+Wants=network-online.target
+After=network-online.target
+[Service]
+ExecStart=/etc/node_exporter/node_exporter
+Restart=always
+[Install]
+WantedBy=multi-user.target
+
+
+PROMETHEUS SCRAPE FILE
+===========================
+
+global:
+  scrape_interval: 15s
+
+scrape_configs:
+- job_name: node
+  static_configs:
+  - targets: ['localhost:9100']
+rule_files:
+ - "alert.rules.yml"
+
+
+ALERTS.RULES.YML FILE
+============================
+
+groups:
+- name: my_alert_rules
+  rules:
+  - alert: HighCpuUsage
+    expr: node_cpu_usage{job="node-exporter"} > 90
+    for: 1m
+    labels:
+      severity: critical
+    annotations:
+      summary: "High CPU usage detected"
+
+  - alert: LowDiskSpace
+    expr: (node_filesystem_avail_bytes{job="node-exporter", mountpoint="/"} / node_filesystem_size_bytes{job="node-exporter", mountpoint="/"}) * 100 < 10
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      summary: "Low disk space detected on /"
+      description: "The available disk space on / is less than 10%."
+
+
